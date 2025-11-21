@@ -162,7 +162,7 @@ def train(root_dir: str = "./dataset", image_size: int = 256, batch_size: int =3
         mode="min",
         factor=0.5,
         patience=3,
-        verbose=True,
+        # verbose=True,
     )
 
     best_val_loss = float("inf")
