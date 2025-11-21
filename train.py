@@ -1,121 +1,31 @@
 import os
 import random
 from typing import Tuple, List
+import argparse
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
-from torchvision import datasets, transforms, models
-
+from torch.utils.data import DataLoader
+from torchvision import models
 from sklearn.metrics import classification_report, confusion_matrix
+
+from dataset import DataModule
 
 
 def set_seed(seed: int = 42):
-    """Set random seed for reproducibility."""
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
 
-def get_data_transforms(image_size: int = 256) -> Tuple[transforms.Compose, transforms.Compose]:
-    """Create train and validation transforms."""
-    train_transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(degrees=15),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2),
-        transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0)),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],  # ImageNet mean
-            std=[0.229, 0.224, 0.225]    # ImageNet std
-        ),
-    ])
-
-    val_transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.CenterCrop(image_size),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        ),
-    ])
-
-    return train_transform, val_transform
-
-
-def create_dataloaders(
-    data_dir: str,
-    batch_size: int = 32,
-    val_ratio: float = 0.2,
-    image_size: int = 256,
-) -> Tuple[DataLoader, DataLoader, List[str], torch.Tensor]:
+def create_resnet18(num_classes: int = 2) -> nn.Module:
     """
-    Create train and validation dataloaders using ImageFolder.
-
-    Returns:
-        train_loader, val_loader, class_names, class_counts
+    Create a ResNet-18 model pretrained on ImageNet and
+    replace the final fully connected layer with a new head.
     """
-    train_transform, val_transform = get_data_transforms(image_size=image_size)
-
-    # Load the whole dataset with train transform first (we will override for val subset)
-    full_dataset = datasets.ImageFolder(root=data_dir, transform=train_transform)
-    class_names = full_dataset.classes
-    print("Classes:", class_names)         # e.g. ['bad', 'good'] or ['good', 'bad']
-    print("Class to index mapping:", full_dataset.class_to_idx)
-
-    # Compute class counts (for information and class weights)
-    targets = [sample[1] for sample in full_dataset.samples]
-    num_classes = len(class_names)
-    class_counts = torch.zeros(num_classes, dtype=torch.long)
-    for t in targets:
-        class_counts[t] += 1
-    print("Class counts:", class_counts.tolist())
-
-    # Split into train and validation
-    num_samples = len(full_dataset)
-    val_size = int(num_samples * val_ratio)
-    train_size = num_samples - val_size
-
-    train_dataset, val_dataset = random_split(
-        full_dataset,
-        [train_size, val_size],
-        generator=torch.Generator().manual_seed(42)
-    )
-
-    # Set different transforms for validation dataset
-    # random_split returns Subset, so we override the transform attribute
-    val_dataset.dataset.transform = val_transform
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=4,
-        pin_memory=True,
-    )
-
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=4,
-        pin_memory=True,
-    )
-
-    return train_loader, val_loader, class_names, class_counts
-
-
-def create_resnet18_model(num_classes: int = 2) -> nn.Module:
-    """Load ResNet-18 pretrained on ImageNet and replace the final layer."""
-    # Load pretrained ResNet-18
     model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-
-    # Replace final fully connected layer
     in_features = model.fc.in_features
     model.fc = nn.Linear(in_features, num_classes)
-
     return model
 
 
@@ -126,7 +36,13 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
 ) -> Tuple[float, float]:
+    """
+    Single training epoch.
+    Returns:
+        (epoch_loss, epoch_accuracy)
+    """
     model.train()
+
     running_loss = 0.0
     running_corrects = 0
     total_samples = 0
@@ -154,19 +70,25 @@ def train_one_epoch(
     return epoch_loss, epoch_acc
 
 
-def validate_one_epoch(
+def evaluate(
     model: nn.Module,
     dataloader: DataLoader,
     criterion: nn.Module,
     device: torch.device,
 ) -> Tuple[float, float, List[int], List[int]]:
+    """
+    Evaluation loop (for val/test).
+    Returns:
+        (epoch_loss, epoch_accuracy, all_labels, all_preds)
+    """
     model.eval()
+
     running_loss = 0.0
     running_corrects = 0
     total_samples = 0
 
-    all_labels = []
-    all_preds = []
+    all_labels: List[int] = []
+    all_preds: List[int] = []
 
     with torch.no_grad():
         for images, labels in dataloader:
@@ -190,39 +112,33 @@ def validate_one_epoch(
 
     return epoch_loss, epoch_acc, all_labels, all_preds
 
-
-def main():
-    # ===================== Config =====================
-    data_dir = "./dataset"          # Change this to your dataset path
-    batch_size = 32
-    num_epochs = 20
-    image_size = 256
-    val_ratio = 0.2
-    learning_rate_backbone = 1e-4
-    learning_rate_head = 5e-4
-    seed = 42
-
-    set_seed(seed)
+def train(root_dir: str = "./dataset", image_size: int = 256, batch_size: int =32, num_workers: int =4, learning_rate_backbone: float =1e-4, learning_rate_head: float =5e-4, weight_decay: float =1e-4, num_epochs: int =20, save_path: str ="best_resnet18_method_a.pth"):
+    set_seed(42)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    # ===================== Data =====================
-    train_loader, val_loader, class_names, class_counts = create_dataloaders(
-        data_dir=data_dir,
-        batch_size=batch_size,
-        val_ratio=val_ratio,
+    data_module = DataModule(
+        root_dir=root_dir,
         image_size=image_size,
+        batch_size=batch_size,
+        num_workers=num_workers,
     )
+    data_module.setup()
 
+    train_loader = data_module.train_dataloader()      # no sampler, using offline-augmented data
+    val_loader = data_module.val_dataloader()
+    test_loader = data_module.test_dataloader()
+
+    class_names = data_module.class_names
     num_classes = len(class_names)
+    print("Class names:", class_names)
 
-    # ===================== Model =====================
-    model = create_resnet18_model(num_classes=num_classes)
+    # ================== Model ==================
+    model = create_resnet18(num_classes=num_classes)
     model = model.to(device)
 
-    # Fine-tune all layers (do not freeze anything)
-    # If you wanted to freeze backbone, you would set requires_grad = False here.
+    # Separate backbone and head parameters (optional, for different LRs)
     backbone_params = []
     head_params = []
     for name, param in model.named_parameters():
@@ -231,39 +147,36 @@ def main():
         else:
             backbone_params.append(param)
 
-    optimizer = torch.optim.AdamW([
-        {"params": backbone_params, "lr": learning_rate_backbone},
-        {"params": head_params, "lr": learning_rate_head},
-    ])
+    optimizer = torch.optim.AdamW(
+        [
+            {"params": backbone_params, "lr": learning_rate_backbone},
+            {"params": head_params, "lr": learning_rate_head},
+        ],
+        weight_decay=weight_decay,
+    )
 
-    # Class weights for imbalance: inverse proportional to class frequency
-    class_counts = class_counts.float()
-    class_weights = class_counts.sum() / (len(class_counts) * class_counts)
-    class_weights = class_weights.to(device)
-    print("Class weights:", class_weights)
-
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    criterion = nn.CrossEntropyLoss()
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="min",
         factor=0.5,
         patience=3,
-        # verbose=True
+        verbose=True,
     )
 
-    # ===================== Training loop =====================
-    best_val_acc = 0.0
-    best_model_path = "best_resnet18_good_bad.pth"
+    best_val_loss = float("inf")
+    best_epoch = -1
 
     for epoch in range(1, num_epochs + 1):
         print(f"\nEpoch {epoch}/{num_epochs}")
-        print("-" * 30)
+        print("-" * 40)
 
         train_loss, train_acc = train_one_epoch(
             model, train_loader, criterion, optimizer, device
         )
-        val_loss, val_acc, all_labels, all_preds = validate_one_epoch(
+
+        val_loss, val_acc, val_labels, val_preds = evaluate(
             model, val_loader, criterion, device
         )
 
@@ -272,19 +185,54 @@ def main():
         print(f"Train loss: {train_loss:.4f} | Train acc: {train_acc:.4f}")
         print(f"Val   loss: {val_loss:.4f} | Val   acc: {val_acc:.4f}")
 
-        # Save best model
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            torch.save(model.state_dict(), best_model_path)
-            print(f"Best model updated. Saved to {best_model_path}")
+        # Save best model based on validation loss
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_epoch = epoch
+            torch.save(model.state_dict(), save_path)
+            print(f"Best model updated at epoch {epoch}. Saved to {save_path}")
 
-        # Optional: print classification report every few epochs
-        if epoch == num_epochs:
-            print("\nClassification report on validation set:")
-            print(classification_report(all_labels, all_preds, target_names=class_names))
-            print("Confusion matrix:")
-            print(confusion_matrix(all_labels, all_preds))
+    print(f"\nTraining finished. Best epoch: {best_epoch}, best val loss: {best_val_loss:.4f}")
 
+    # ================== Test Evaluation ==================
+    print("\nLoading best model and evaluating on test set...")
+    model.load_state_dict(torch.load(save_path, map_location=device))
+
+    test_loss, test_acc, test_labels, test_preds = evaluate(
+        model, test_loader, criterion, device
+    )
+
+    print(f"\nTest loss: {test_loss:.4f} | Test acc: {test_acc:.4f}\n")
+
+    # Classification report and confusion matrix
+    print("Classification report (test):")
+    print(classification_report(test_labels, test_preds, target_names=class_names))
+
+    print("Confusion matrix (test):")
+    print(confusion_matrix(test_labels, test_preds)) 
+    
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Training script for ResNet18 with offline augmentation.")
+    parser.add_argument("--root_dir", type=str, default="./dataset", help="Root directory of the dataset.")
+    parser.add_argument("--image_size", type=int, default=256, help="Image size for resizing.")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for data loaders.")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for data loaders.")
+    parser.add_argument("--learning_rate_backbone", type=float, default=1e-4, help="Learning rate for backbone parameters.")
+    parser.add_argument("--learning_rate_head", type=float, default=5e-4, help="Learning rate for head parameters.")
+    parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for optimizer.")
+    parser.add_argument("--num_epochs", type=int, default=20, help="Number of training epochs.")
+    parser.add_argument("--save_path", type=str, default="best_aug.pth", help="Path to save the best model.")
+
+    args = parser.parse_args()
+    train(
+        root_dir=args.root_dir,
+        image_size=args.image_size,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        learning_rate_backbone=args.learning_rate_backbone,
+        learning_rate_head=args.learning_rate_head,
+        weight_decay=args.weight_decay,
+        num_epochs=args.num_epochs,
+        save_path=args.save_path
+    )
