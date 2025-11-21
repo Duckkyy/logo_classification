@@ -1,0 +1,59 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.db
+*.sqlite3
+
+# Virtual environment
+.env
+.venv/
+venv/
+ENV/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- VSCode ---
+.vscode/
+.history/
+
+# --- Logs / Outputs ---
+*.log
+*.out
+*.tmp
+
+# --- Model / Data files ---
+*.pth
+*.pt
+*.onnx
+*.h5
+*.ckpt
+
+# YOLO & image processing cache
+runs/
+crops/
+results/
+
+# --- Project specific ---
+# Add your folders here if needed
+*.mp4
+*.avi
+*.jpg
+*.png
+
+# --- Others ---
+.idea/
+*.swp
+*.swo
+
+# --- Folder ---
+dataset/
