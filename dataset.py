@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 
-class GoodBadDataModule:
+class DataModule:
     def __init__(
         self,
         root_dir: str = "./dataset",
