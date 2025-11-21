@@ -1,250 +1,171 @@
-# dataset.py
-
 import os
-import random
-from typing import Tuple, List, Dict
+from typing import Optional, Tuple
 
 import torch
-from torch.utils.data import Dataset, DataLoader
-from torch.utils.data import Subset
+from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 
-def set_seed(seed: int = 42):
-    """Set random seed for reproducibility."""
-    random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+class GoodBadDataModule:
+    def __init__(
+        self,
+        root_dir: str = "./dataset",
+        image_size: int = 256,
+        batch_size: int = 32,
+        num_workers: int = 4,
+    ):
+        self.root_dir = root_dir
+        self.image_size = image_size
+        self.batch_size = batch_size
+        self.num_workers = num_workers
 
+        self.train_dir = os.path.join(root_dir, "train")
+        self.val_dir = os.path.join(root_dir, "val")
+        self.test_dir = os.path.join(root_dir, "test")
 
-class ImageFolderWithTransform(Dataset):
-    """
-    Wraps an ImageFolder + a subset of indices + a transform.
-    This allows different transforms for train / val / test
-    while sharing the same underlying ImageFolder.
-    """
+        self.train_transform, self.eval_transform = self._build_transforms()
 
-    def __init__(self, base_dataset: datasets.ImageFolder,
-                 indices: List[int],
-                 transform=None):
-        self.base_dataset = base_dataset
-        self.indices = indices
-        self.transform = transform
+        self.train_dataset = None
+        self.val_dataset = None
+        self.test_dataset = None
 
-    def __len__(self):
-        return len(self.indices)
+        self.class_names = None
+        self.train_class_counts = None
 
-    def __getitem__(self, idx):
-        base_idx = self.indices[idx]
-        path, label = self.base_dataset.samples[base_idx]
-        image = self.base_dataset.loader(path)
+    def _build_transforms(self) -> Tuple[transforms.Compose, transforms.Compose]:
+        """
+        Build train and eval (val/test) transforms.
 
-        if self.transform is not None:
-            image = self.transform(image)
+        NOTE:
+            - Train transform includes augmentation.
+            - Eval transform is clean (only resize + normalize).
+        """
+        train_transform = transforms.Compose([
+            transforms.Resize((self.image_size, self.image_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=15),
+            transforms.ColorJitter(
+                brightness=0.2,
+                contrast=0.2,
+                saturation=0.2,
+                hue=0.05,
+            ),
+            transforms.RandomResizedCrop(self.image_size, scale=(0.8, 1.0)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],  # ImageNet mean
+                std=[0.229, 0.224, 0.225],   # ImageNet std
+            ),
+        ])
 
-        return image, label
+        eval_transform = transforms.Compose([
+            transforms.Resize((self.image_size, self.image_size)),
+            transforms.CenterCrop(self.image_size),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
+        ])
 
+        return train_transform, eval_transform
 
-def get_transforms(image_size: int = 256):
-    """
-    Create transforms for train and eval (val/test).
-    Train has augmentation, val/test only resizing + normalization.
-    """
-    train_transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(degrees=15),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2),
-        transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0)),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-        ),
-    ])
-
-    eval_transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.CenterCrop(image_size),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-        ),
-    ])
-
-    return train_transform, eval_transform
-
-
-def stratified_split_indices(
-    targets: List[int],
-    train_ratio: float = 0.7,
-    val_ratio: float = 0.15,
-    test_ratio: float = 0.15,
-    seed: int = 42,
-) -> Tuple[List[int], List[int], List[int]]:
-    """
-    Create stratified split indices (train/val/test) based on class labels.
-    """
-
-    assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, \
-        "Train/val/test ratios must sum to 1."
-
-    set_seed(seed)
-
-    num_samples = len(targets)
-    num_classes = len(set(targets))
-
-    # Collect indices for each class
-    class_to_indices: Dict[int, List[int]] = {c: [] for c in range(num_classes)}
-    for idx, label in enumerate(targets):
-        class_to_indices[label].append(idx)
-
-    train_indices = []
-    val_indices = []
-    test_indices = []
-
-    for c, idx_list in class_to_indices.items():
-        random.shuffle(idx_list)
-        n = len(idx_list)
-
-        n_train = int(n * train_ratio)
-        n_val = int(n * val_ratio)
-        n_test = n - n_train - n_val  # rest
-
-        train_indices.extend(idx_list[:n_train])
-        val_indices.extend(idx_list[n_train:n_train + n_val])
-        test_indices.extend(idx_list[n_train + n_val:])
-
-    # Shuffle each split (optional but nice)
-    random.shuffle(train_indices)
-    random.shuffle(val_indices)
-    random.shuffle(test_indices)
-
-    return train_indices, val_indices, test_indices
-
-
-def create_dataloaders(
-    data_dir: str,
-    image_size: int = 256,
-    batch_size: int = 32,
-    train_ratio: float = 0.7,
-    val_ratio: float = 0.15,
-    test_ratio: float = 0.15,
-    seed: int = 42,
-    num_workers: int = 4,
-):
-    """
-    Main function to create:
-      - train_loader, val_loader, test_loader
-      - class_names (['bad', 'good'] etc.)
-      - train_class_counts (tensor of length num_classes)
-    Assumes data_dir has the structure:
-        data_dir/good/*.png
-        data_dir/bad/*.png
-    """
-
-    set_seed(seed)
-
-    # Base dataset without transform
-    base_dataset = datasets.ImageFolder(root=data_dir)
-    class_names = base_dataset.classes
-    class_to_idx = base_dataset.class_to_idx
-    print("Classes:", class_names)
-    print("Class to index:", class_to_idx)
-
-    # Get all labels
-    targets = [s[1] for s in base_dataset.samples]
-
-    # Split indices stratified
-    train_idx, val_idx, test_idx = stratified_split_indices(
-        targets,
-        train_ratio=train_ratio,
-        val_ratio=val_ratio,
-        test_ratio=test_ratio,
-        seed=seed,
-    )
-
-    print(f"#Train: {len(train_idx)}, #Val: {len(val_idx)}, #Test: {len(test_idx)}")
-
-    # Count classes in train split (for weight calculation)
-    num_classes = len(class_names)
-    train_class_counts = torch.zeros(num_classes, dtype=torch.long)
-    for i in train_idx:
-        label = targets[i]
-        train_class_counts[label] += 1
-    print("Train class counts:", train_class_counts.tolist())
-
-    # Transforms
-    train_transform, eval_transform = get_transforms(image_size=image_size)
-
-    # Datasets with their own transform
-    train_dataset = ImageFolderWithTransform(
-        base_dataset=base_dataset,
-        indices=train_idx,
-        transform=train_transform,
-    )
-
-    val_dataset = ImageFolderWithTransform(
-        base_dataset=base_dataset,
-        indices=val_idx,
-        transform=eval_transform,
-    )
-
-    test_dataset = ImageFolderWithTransform(
-        base_dataset=base_dataset,
-        indices=test_idx,
-        transform=eval_transform,
-    )
-
-    # Dataloaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=True,
-    )
-
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
-    )
-
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
-    )
-
-    return train_loader, val_loader, test_loader, class_names, train_class_counts
-
-
-if __name__ == "__main__":
-    """
-    Quick test:
-    Run `python dataset.py` to check that dataloaders work.
-    """
-    data_dir = "./dataset"  # change to your dataset path
-
-    train_loader, val_loader, test_loader, class_names, train_class_counts = \
-        create_dataloaders(
-            data_dir=data_dir,
-            image_size=256,
-            batch_size=32,
-            train_ratio=0.7,
-            val_ratio=0.15,
-            test_ratio=0.15,
-            seed=42,
+    def setup(self):
+        """
+        Create ImageFolder datasets for train/val/test and
+        compute class information for the training split.
+        """
+        # Train dataset with augmentation
+        self.train_dataset = datasets.ImageFolder(
+            root=self.train_dir,
+            transform=self.train_transform,
         )
 
-    print("Class names:", class_names)
-    print("Train class counts:", train_class_counts)
-    batch = next(iter(train_loader))
-    images, labels = batch
-    print("One train batch shape:", images.shape, labels.shape)
+        # Val and test datasets with eval transform
+        self.val_dataset = datasets.ImageFolder(
+            root=self.val_dir,
+            transform=self.eval_transform,
+        )
+
+        self.test_dataset = datasets.ImageFolder(
+            root=self.test_dir,
+            transform=self.eval_transform,
+        )
+
+        # Class names (e.g., ['bad', 'good'] or ['good', 'bad'])
+        self.class_names = self.train_dataset.classes
+        print("Classes:", self.class_names)
+        print("Class to index:", self.train_dataset.class_to_idx)
+
+        # Count how many samples of each class in the training split
+        num_classes = len(self.class_names)
+        self.train_class_counts = torch.zeros(num_classes, dtype=torch.long)
+
+        # train_dataset.samples = list of (path, label)
+        for _, label in self.train_dataset.samples:
+            self.train_class_counts[label] += 1
+
+        print("Train class counts:", self.train_class_counts.tolist())
+
+    def train_dataloader(self, sampler: Optional[torch.utils.data.Sampler] = None) -> DataLoader:
+        """
+        Build DataLoader for training.
+
+        Args:
+            sampler: optional custom sampler (e.g., WeightedRandomSampler).
+                     If sampler is provided, shuffle is automatically disabled.
+
+        Returns:
+            DataLoader for training data.
+        """
+        shuffle = sampler is None
+
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=shuffle,
+            sampler=sampler,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        """Build DataLoader for validation data."""
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+
+    def test_dataloader(self) -> DataLoader:
+        """Build DataLoader for test data."""
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+
+
+# if __name__ == "__main__":
+#     # Quick sanity check
+#     data_module = GoodBadDataModule(
+#         root_dir="./dataset_split",
+#         image_size=256,
+#         batch_size=32,
+#         num_workers=4,
+#     )
+
+#     data_module.setup()
+
+#     train_loader = data_module.train_dataloader()
+#     val_loader = data_module.val_dataloader()
+#     test_loader = data_module.test_dataloader()
+
+#     # Fetch one batch to check shapes
+#     images, labels = next(iter(train_loader))
+#     print("Train batch image shape:", images.shape)
+#     print("Train batch labels shape:", labels.shape)
