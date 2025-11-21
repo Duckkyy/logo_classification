@@ -3,6 +3,7 @@ import random
 from pathlib import Path
 from PIL import Image
 from torchvision import transforms
+import argparse
 
 
 def set_seed(seed: int = 42):
@@ -91,11 +92,19 @@ def offline_augment_bad(
 
 
 if __name__ == "__main__":
-    bad_train_dir = "./dataset/train/bad"
+    parser = argparse.ArgumentParser(description="Offline augmentation for bad images.")
+    parser.add_argument("--bad_dir", type=str, default="./dataset/train/bad", help="Directory containing bad images to augment.")
+    parser.add_argument("--target_count", type=int, default=800, help="Target number of bad images after augmentation.")
+    parser.add_argument("--image_size", type=int, default=256, help="Image size for augmentation.")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
+
+    args = parser.parse_args()
 
     offline_augment_bad(
-        bad_dir=bad_train_dir,
-        target_count=800,  
-        image_size=256,
-        seed=42
+        bad_dir=args.bad_dir,
+        target_count=args.target_count,  
+        image_size=args.image_size,
+        seed=args.seed
     )
+
+# python augment_bad.py --bad_dir ./dataset/train/bad
