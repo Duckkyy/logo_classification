@@ -1,137 +1,101 @@
 import os
-import shutil
 import random
 from pathlib import Path
-from sklearn.model_selection import train_test_split
+from PIL import Image
+from torchvision import transforms
 
 
-def collect_image_paths(root_dir):
-    """
-    Collect all image paths grouped by class.
-    Expected dataset structure:
-        root_dir/class_name/*.png
-    Returns:
-        dict: {class_name: [list of image paths]}
-    """
-    class_to_paths = {}
-    root = Path(root_dir)
-
-    for class_dir in root.iterdir():
-        if class_dir.is_dir():
-            image_paths = []
-            for p in class_dir.iterdir():
-                if p.suffix.lower() in [".png", ".jpg", ".jpeg", ".bmp"]:
-                    image_paths.append(str(p))
-            class_to_paths[class_dir.name] = image_paths
-
-    return class_to_paths
-
-
-def stratified_split(paths, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42):
-    """
-    Perform stratified split into train/val/test.
-    Returns:
-        train_paths, val_paths, test_paths
-    """
-    assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, \
-        "Ratios must sum to 1."
-
+def set_seed(seed: int = 42):
     random.seed(seed)
 
-    # Create labels for stratify
-    all_paths = []
-    all_labels = []
 
-    for label, path_list in paths.items():
-        all_paths.extend(path_list)
-        all_labels.extend([label] * len(path_list))
-
-    # First split: train vs temp
-    train_paths, temp_paths, train_labels, temp_labels = train_test_split(
-        all_paths,
-        all_labels,
-        test_size=(1 - train_ratio),
-        random_state=seed,
-        stratify=all_labels,
-    )
-
-    # Second split: val vs test
-    relative_test_ratio = test_ratio / (val_ratio + test_ratio)
-
-    val_paths, test_paths, _, _ = train_test_split(
-        temp_paths,
-        temp_labels,
-        test_size=relative_test_ratio,
-        random_state=seed,
-        stratify=temp_labels,
-    )
-
-    return train_paths, val_paths, test_paths
+def get_image_paths(folder: str):
+    """Return a list of all image paths in the given folder."""
+    exts = [".png", ".jpg", ".jpeg", ".bmp"]
+    folder = Path(folder)
+    paths = [p for p in folder.iterdir() if p.suffix.lower() in exts]
+    return paths
 
 
-def copy_images(path_list, output_root):
-    """
-    Copy images into output folder while preserving class names.
-    """
-    for img_path in path_list:
-        img_path = Path(img_path)
-        class_name = img_path.parent.name
+def build_augmentation_transform(image_size: int = 256):
+    return transforms.Compose([
+        transforms.Resize((image_size, image_size)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(20),
+        transforms.ColorJitter(
+            brightness=0.25,
+            contrast=0.25,
+            saturation=0.2,
+            hue=0.05
+        ),
+        transforms.RandomResizedCrop(image_size, scale=(0.7, 1.0)),
+    ])
 
-        class_output_dir = output_root / class_name
-        class_output_dir.mkdir(parents=True, exist_ok=True)
 
-        shutil.copy(img_path, class_output_dir / img_path.name)
-
-
-def run_split(
-    input_dir="dataset",
-    output_dir="dataset_split",
-    train_ratio=0.7,
-    val_ratio=0.15,
-    test_ratio=0.15,
-    seed=42,
+def offline_augment_bad(
+    bad_dir: str,
+    target_count: int = 800,
+    image_size: int = 256,
+    seed: int = 42
 ):
-    """
-    Full pipeline:
-    - Read dataset
-    - Stratified split
-    - Save into dataset_split/train, dataset_split/val, dataset_split/test
-    """
-    print("\nCollecting dataset...")
-    paths = collect_image_paths(input_dir)
+    set_seed(seed)
 
-    print("Classes found:", list(paths.keys()))
-    for cls, p_list in paths.items():
-        print(f"  {cls}: {len(p_list)} images")
+    bad_dir = Path(bad_dir)
+    bad_dir.mkdir(parents=True, exist_ok=True)
 
-    print("\nPerforming stratified split...")
-    train_paths, val_paths, test_paths = stratified_split(
-        paths, train_ratio, val_ratio, test_ratio, seed
-    )
+    # Step 1: Load existing images
+    image_paths = get_image_paths(bad_dir)
+    current_count = len(image_paths)
 
-    print(f"Train: {len(train_paths)} images")
-    print(f"Val:   {len(val_paths)} images")
-    print(f"Test:  {len(test_paths)} images")
+    print(f"Current bad images : {current_count}")
+    print(f"Target bad images  : {target_count}")
 
-    # Prepare output folders
-    output_root = Path(output_dir)
-    for split in ["train", "val", "test"]:
-        (output_root / split).mkdir(parents=True, exist_ok=True)
+    if current_count >= target_count:
+        print("Already have enough images. Nothing to do.")
+        return
 
-    print("\nCopying images...")
-    copy_images(train_paths, output_root / "train")
-    copy_images(val_paths, output_root / "val")
-    copy_images(test_paths, output_root / "test")
+    # Step 2: Build augmenter
+    aug_transform = build_augmentation_transform(image_size=image_size)
 
-    print("\nDone! Split dataset is saved in:", output_root)
+    # Step 3: Augmentation loop
+    to_generate = target_count - current_count
+    print(f"Need to generate   : {to_generate} augmented images\n")
+
+    # start index for naming new files
+    base_index = 0
+
+    # avoid name conflicts
+    while True:
+        candidate = bad_dir / f"bad_aug_{base_index:05d}.png"
+        if not candidate.exists():
+            break
+        base_index += 1
+
+    for i in range(to_generate):
+        src_path = random.choice(image_paths)
+        img = Image.open(src_path).convert("RGB")
+
+        # apply augmentation
+        aug_img = aug_transform(img)
+
+        # save augmented image
+        save_name = bad_dir / f"bad_aug_{base_index:05d}.png"
+        aug_img.save(save_name)
+        base_index += 1
+
+        if (i + 1) % 50 == 0:
+            print(f"Generated {i + 1}/{to_generate} images")
+
+    print("\nOffline augmentation completed.")
+    print(f"Final number of bad images: {len(get_image_paths(bad_dir))}")
 
 
 if __name__ == "__main__":
-    run_split(
-        input_dir="./dataset",          # your original dataset path
-        output_dir="./dataset_split",   # output folder
-        train_ratio=0.7,
-        val_ratio=0.15,
-        test_ratio=0.15,
-        seed=42,
+    bad_train_dir = "./dataset/train/bad"
+
+    offline_augment_bad(
+        bad_dir=bad_train_dir,
+        target_count=800,  
+        image_size=256,
+        seed=42
     )
