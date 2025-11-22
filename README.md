@@ -31,10 +31,10 @@ python inference.py --model-path weights/best_sampler_resnet.pth path/to/image -
 他の学習済みモデルを使用したい場合は、--model に指定する重みファイル名 と --model_type の番号を下表のように変更するだけで推論を実行できます。
 | weight file  | model_type |
 | ------------ | ---------- |
-| resnet       | 1          |
-| efficientNet | 2          |
-| mobileNet    | 3          |
-| ViT-Tiny     | 4          |
+| best_sampler_resnet.pth       | 1          |
+| best_sampler_efficientnet.pth | 2          |
+| best_sampler_mobilenet.pth    | 3          |
+| best_sampler_vit.pth     | 4          |
 
 
 
