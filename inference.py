@@ -7,6 +7,8 @@ import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 
+from model import Model
+
 CLASS_NAMES = ["bad", "good"]
 
 def build_eval_transform(image_size: int = 256):
@@ -38,26 +40,10 @@ def load_image(image_path: str, transform, device: torch.device):
     img_t = img_t.unsqueeze(0)  # add batch dimension
     return img_t.to(device)
 
-
-def create_resnet18(num_classes: int = 2) -> nn.Module:
-    model = models.resnet18(weights=None)  # weights=None because we load our own
-    in_features = model.fc.in_features
-    model.fc = nn.Linear(in_features, num_classes)
-    return model
-
-def create_efficientnet_b0(num_classes: int = 2):
-    model = models.efficientnet_b0(weights=None)
-    in_features = model.classifier[1].in_features
-    model.classifier[1] = nn.Linear(in_features, num_classes)
-    return model
-
-def load_model(model_path: str, device: torch.device) -> nn.Module:
+def load_model(model, model_path: str, device: torch.device) -> nn.Module:
     """
     Load a trained ResNet-18 model from a .pth / .pt file.
     """
-    num_classes = len(CLASS_NAMES)
-    # model = create_resnet18(num_classes=num_classes)
-    model = create_efficientnet_b0(num_classes=num_classes)
     state_dict = torch.load(model_path, map_location=device)
     model.load_state_dict(state_dict)
     model.to(device)
@@ -124,6 +110,9 @@ def parse_args():
 def main():
     args = parse_args()
 
+    model_builder = Model(num_classes=len(CLASS_NAMES), flag="inference")
+    model = model_builder.build_vit_tiny()
+
     # Select device
     if args.device == "cuda" and not torch.cuda.is_available():
         print("CUDA not available, falling back to CPU.")
@@ -140,7 +129,7 @@ def main():
     image_tensor = load_image(args.image_path, transform, device)
 
     # Load model
-    model = load_model(args.model_path, device)
+    model = load_model(model, args.model_path, device)
 
     start_time = time.perf_counter()
 
