@@ -116,7 +116,7 @@ def parse_args():
         help="Image size used for resizing / cropping.",
     )
     parser.add_argument(
-        "--model_type", 
+        "--model-type", 
         type=int, choices=[1, 2, 3, 4], 
         default=2, 
         help="Model type: 1=ResNet18, 2=EfficientNet-B0, 3=MobileNet-v3, 4=ViT-Tiny"
