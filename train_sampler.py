@@ -29,6 +29,11 @@ def create_resnet18(num_classes: int = 2) -> nn.Module:
     model.fc = nn.Linear(in_features, num_classes)
     return model
 
+def create_efficientnet_b0(num_classes: int = 2):
+    model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+    in_features = model.classifier[1].in_features
+    model.classifier[1] = nn.Linear(in_features, num_classes)
+    return model
 
 def build_weighted_sampler(
     train_dataset,
@@ -185,7 +190,8 @@ def train(root_dir: str = "./dataset", image_size: int = 256, batch_size: int =3
     print("Class names:", class_names)
 
     # ================== Model ==================
-    model = create_resnet18(num_classes=num_classes)
+    # model = create_resnet18(num_classes=num_classes)
+    model = create_efficientnet_b0(num_classes=num_classes)
     model = model.to(device)
 
     backbone_params = []
