@@ -5,6 +5,8 @@
 クラス不均衡への対応や複数モデルの比較（ResNet / EfficientNet / MobileNet / ViT）を通じて、
 より高精度な自動外観検査モデルの構築を目的としています。
 
+学習中に生成される損失曲線や精度推移などの可視化画像は、`training_curves/` および `confusion_matrices/` に自動的に保存されます。
+
 
 ## 1. 環境構築（Conda）
 
