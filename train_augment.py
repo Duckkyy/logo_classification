@@ -8,6 +8,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import models
 from sklearn.metrics import classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import numpy as np
 
 from dataset import DataModule
 
@@ -28,6 +30,79 @@ def create_resnet18(num_classes: int = 2) -> nn.Module:
     model.fc = nn.Linear(in_features, num_classes)
     return model
 
+def plot_training_curves(train_losses, val_losses, train_accs, val_accs):
+    """
+    Plot and save training/validation loss and accuracy curves.
+    """
+    epochs = range(1, len(train_losses) + 1)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Loss plot
+    ax1.plot(epochs, train_losses, label='Train Loss', marker='o')
+    ax1.plot(epochs, val_losses, label='Val Loss', marker='o')
+    ax1.set_title('Loss Curves')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Loss')
+    ax1.legend()
+    ax1.grid(True)
+
+    # Accuracy plot
+    ax2.plot(epochs, train_accs, label='Train Acc', marker='o')
+    ax2.plot(epochs, val_accs, label='Val Acc', marker='o')
+    ax2.set_title('Accuracy Curves')
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Accuracy')
+    ax2.legend()
+    ax2.grid(True)
+
+    plt.suptitle(f'Training Curves - augmentation_resnet18')
+    plt.tight_layout()
+    save_dir = "training_curves"
+    os.makedirs(save_dir, exist_ok=True)
+    curve_save_path = os.path.join(save_dir, f"augmentation_resnet18_training_curves.png")
+    plt.savefig(curve_save_path)
+    plt.close()
+    print(f"Training curves saved to {curve_save_path}")
+
+
+def plot_confusion_matrix(labels, preds, class_names):
+    """
+    Plot and save confusion matrix.
+    """
+    cm = confusion_matrix(labels, preds)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    ax.figure.colorbar(im, ax=ax)
+
+    # We want to show all ticks...
+    ax.set(xticks=np.arange(cm.shape[1]),
+           yticks=np.arange(cm.shape[0]),
+           # ... and label them with the respective list entries
+           xticklabels=class_names, yticklabels=class_names,
+           title='Confusion Matrix',
+           ylabel='True label',
+           xlabel='Predicted label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+             rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], 'd'),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+    save_dir = "confusion_matrices"
+    os.makedirs(save_dir, exist_ok=True)
+    cm_save_path = os.path.join(save_dir, f"augmentation_resnet18_confusion_matrix.png")
+    plt.title(f'Confusion Matrix - augmentation_resnet18')
+    plt.savefig(cm_save_path)
+    plt.close()
+    print(f"Confusion matrix saved to {cm_save_path}")
 
 def train_one_epoch(
     model: nn.Module,
@@ -168,6 +243,11 @@ def train(root_dir: str = "./dataset", image_size: int = 256, batch_size: int =3
     best_val_loss = float("inf")
     best_epoch = -1
 
+    train_losses = []
+    val_losses = []
+    train_accs = []
+    val_accs = []
+
     for epoch in range(1, num_epochs + 1):
         print(f"\nEpoch {epoch}/{num_epochs}")
         print("-" * 40)
@@ -184,6 +264,12 @@ def train(root_dir: str = "./dataset", image_size: int = 256, batch_size: int =3
 
         print(f"Train loss: {train_loss:.4f} | Train acc: {train_acc:.4f}")
         print(f"Val   loss: {val_loss:.4f} | Val   acc: {val_acc:.4f}")
+
+        # Store metrics for plotting
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        train_accs.append(train_acc)
+        val_accs.append(val_acc)
 
         # Save best model based on validation loss
         if val_loss < best_val_loss:
@@ -210,6 +296,10 @@ def train(root_dir: str = "./dataset", image_size: int = 256, batch_size: int =3
 
     print("Confusion matrix (test):")
     print(confusion_matrix(test_labels, test_preds)) 
+
+    # ================== Plotting ==================
+    plot_training_curves(train_losses, val_losses, train_accs, val_accs)
+    plot_confusion_matrix(test_labels, test_preds, class_names)
     
 
 if __name__ == "__main__":
