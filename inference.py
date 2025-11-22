@@ -26,6 +26,17 @@ def build_eval_transform(image_size: int = 256):
         ),
     ])
 
+def build_model(model_builder, model_type: int) -> nn.Module:
+    if model_type == 1:
+        return model_builder.build_resnet18()
+    elif model_type == 2:
+        return model_builder.build_efficientnet_b0()
+    elif model_type == 3:
+        return model_builder.build_mobilenet_v3()
+    elif model_type == 4:
+        return model_builder.build_vit_tiny()
+    else:
+        raise ValueError(f"Invalid model_type: {model_type}. Choose from 1, 2, 3, 4.")
 
 def load_image(image_path: str, transform, device: torch.device):
     """
@@ -104,6 +115,13 @@ def parse_args():
         default=256,
         help="Image size used for resizing / cropping.",
     )
+    parser.add_argument(
+        "--model_type", 
+        type=int, choices=[1, 2, 3, 4], 
+        default=2, 
+        help="Model type: 1=ResNet18, 2=EfficientNet-B0, 3=MobileNet-v3, 4=ViT-Tiny"
+    )
+
     return parser.parse_args()
 
 
@@ -111,7 +129,9 @@ def main():
     args = parse_args()
 
     model_builder = Model(num_classes=len(CLASS_NAMES), flag="inference")
-    model = model_builder.build_vit_tiny()
+    model = build_model(model_builder, model_type=args.model_type)
+    if args.model_type == 4:
+        args.image_size = 224  # ViT-Tiny requires 224x224 input
 
     # Select device
     if args.device == "cuda" and not torch.cuda.is_available():
