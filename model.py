@@ -3,7 +3,6 @@ import timm
 import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import models
-from torchvision.models import vit_t_16, ViT_T_16_Weights
 
 class Model:
     def __init__(self, num_classes: int, flag="train"):
