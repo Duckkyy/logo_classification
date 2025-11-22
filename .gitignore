@@ -57,3 +57,6 @@ results/
 
 # --- Folder ---
 dataset/
+
+# --- pdf files ---
+AI_ML_Team*.pdf
