@@ -29,6 +29,16 @@ class Model:
         model.classifier[1] = nn.Linear(in_features, self.num_classes)
         return model
     
+    def build_mobilenet_v3(self):
+        if self.flag == "train":
+            weight = models.MobileNet_V3_Large_Weights.IMAGENET1K_V1
+        else:
+            weight = None
+        model = models.mobilenet_v3_large(weights=weight)
+        in_features = model.classifier[3].in_features
+        model.classifier[3] = nn.Linear(in_features, self.num_classes)
+        return model
+    
     def build_vit_tiny(self):
         if self.flag == "train":
             pretrained = True
