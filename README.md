@@ -21,7 +21,7 @@ conda activate logo
 mkdir weights
 ```
 2. Google Drive から学習済みモデルを[ここ](https://drive.google.com/drive/folders/1_o6ZLPLGuaEySYNjg8hAiJZC3uYWhS9s?usp=sharing
-)からダウンロードして配置する：
+)からダウンロードして配置する。
 
 ## 3. 推論実行方法（Inference）
 画像を入力として良品/不良品の分類を行うには、以下のコマンドを実行します。
@@ -29,7 +29,7 @@ mkdir weights
 ```bash
 python inference.py --model-path weights/best_sampler_resnet.pth path/to/image --device cuda --model-type 1
 ```
-他の学習済みモデルを使用したい場合は、--model に指定する重みファイル名 と --model_type の番号を下表のように変更するだけで推論を実行できます。
+他の学習済みモデルを使用したい場合は、--model-path に指定する重みファイル名 と --model-type の番号を下表のように変更するだけで推論を実行できます。
 | weight file  | model_type |
 | ------------ | ---------- |
 | best_sampler_resnet.pth       | 1          |
