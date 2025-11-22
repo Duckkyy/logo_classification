@@ -45,13 +45,19 @@ def create_resnet18(num_classes: int = 2) -> nn.Module:
     model.fc = nn.Linear(in_features, num_classes)
     return model
 
+def create_efficientnet_b0(num_classes: int = 2):
+    model = models.efficientnet_b0(weights=None)
+    in_features = model.classifier[1].in_features
+    model.classifier[1] = nn.Linear(in_features, num_classes)
+    return model
 
 def load_model(model_path: str, device: torch.device) -> nn.Module:
     """
     Load a trained ResNet-18 model from a .pth / .pt file.
     """
     num_classes = len(CLASS_NAMES)
-    model = create_resnet18(num_classes=num_classes)
+    # model = create_resnet18(num_classes=num_classes)
+    model = create_efficientnet_b0(num_classes=num_classes)
     state_dict = torch.load(model_path, map_location=device)
     model.load_state_dict(state_dict)
     model.to(device)
