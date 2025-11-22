@@ -8,6 +8,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import models
 from sklearn.metrics import classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import numpy as np
 
 from dataset import DataModule
 from model import Model
@@ -17,6 +19,7 @@ def set_seed(seed: int = 42):
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
 
 def build_weighted_sampler(
     train_dataset,
@@ -57,17 +60,19 @@ def build_weighted_sampler(
 
     return sampler, class_weights
 
+
 def build_model(model_builder, model_type: int) -> nn.Module:
     if model_type == 1:
-        return model_builder.build_resnet18()
+        return model_builder.build_resnet18(), "resnet_18"
     elif model_type == 2:
-        return model_builder.build_efficientnet_b0()
+        return model_builder.build_efficientnet_b0(), "efficientnet_b0"
     elif model_type == 3:
-        return model_builder.build_mobilenet_v3()
+        return model_builder.build_mobilenet_v3(), "mobilenet_v3"
     elif model_type == 4:
-        return model_builder.build_vit_tiny()
+        return model_builder.build_vit_tiny(), "ViT_tiny"
     else:
         raise ValueError(f"Invalid model_type: {model_type}. Choose from 1, 2, 3, 4.")
+
 
 def train_one_epoch(
     model: nn.Module,
@@ -152,7 +157,95 @@ def evaluate(
 
     return epoch_loss, epoch_acc, all_labels, all_preds
 
-def train(model=None, root_dir: str = "./dataset", image_size: int = 256, batch_size: int =32, num_workers: int =4, learning_rate_backbone: float =1e-4, learning_rate_head: float =5e-4, weight_decay: float =1e-4, num_epochs: int =20, save_path: str ="best_sampler.pth"):
+
+def plot_training_curves(train_losses, val_losses, train_accs, val_accs, model_name: str):
+    """
+    Plot and save training/validation loss and accuracy curves.
+    """
+    epochs = range(1, len(train_losses) + 1)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Loss plot
+    ax1.plot(epochs, train_losses, label='Train Loss', marker='o')
+    ax1.plot(epochs, val_losses, label='Val Loss', marker='o')
+    ax1.set_title('Loss Curves')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Loss')
+    ax1.legend()
+    ax1.grid(True)
+
+    # Accuracy plot
+    ax2.plot(epochs, train_accs, label='Train Acc', marker='o')
+    ax2.plot(epochs, val_accs, label='Val Acc', marker='o')
+    ax2.set_title('Accuracy Curves')
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Accuracy')
+    ax2.legend()
+    ax2.grid(True)
+
+    plt.suptitle(f'Training Curves - {model_name}')
+    plt.tight_layout()
+    save_dir = "training_curves"
+    os.makedirs(save_dir, exist_ok=True)
+    curve_save_path = os.path.join(save_dir, f"{model_name}_training_curves.png")
+    plt.savefig(curve_save_path)
+    plt.close()
+    print(f"Training curves saved to {curve_save_path}")
+
+
+def plot_confusion_matrix(labels, preds, class_names, model_name: str):
+    """
+    Plot and save confusion matrix.
+    """
+    cm = confusion_matrix(labels, preds)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    ax.figure.colorbar(im, ax=ax)
+
+    # We want to show all ticks...
+    ax.set(xticks=np.arange(cm.shape[1]),
+           yticks=np.arange(cm.shape[0]),
+           # ... and label them with the respective list entries
+           xticklabels=class_names, yticklabels=class_names,
+           title='Confusion Matrix',
+           ylabel='True label',
+           xlabel='Predicted label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+             rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], 'd'),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+    save_dir = "confusion_matrices"
+    os.makedirs(save_dir, exist_ok=True)
+    cm_save_path = os.path.join(save_dir, f"{model_name}_confusion_matrix.png")
+    plt.title(f'Confusion Matrix - {model_name}')
+    plt.savefig(cm_save_path)
+    plt.close()
+    print(f"Confusion matrix saved to {cm_save_path}")
+
+
+def train(
+    model=None,
+    model_name: str = "model",
+    root_dir: str = "./dataset",
+    image_size: int = 256,
+    batch_size: int = 32,
+    num_workers: int = 4,
+    learning_rate_backbone: float = 1e-4,
+    learning_rate_head: float = 5e-4,
+    weight_decay: float = 1e-4,
+    num_epochs: int = 20,
+    save_path: str = "best_sampler.pth"
+):
     set_seed(42)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -210,12 +303,16 @@ def train(model=None, root_dir: str = "./dataset", image_size: int = 256, batch_
         mode="min",
         factor=0.5,
         patience=3,
-        # verbose=True,
     )
 
     # ================== Training Loop ==================
     best_val_loss = float("inf")
     best_epoch = -1
+
+    train_losses = []
+    val_losses = []
+    train_accs = []
+    val_accs = []
 
     for epoch in range(1, num_epochs + 1):
         print(f"\nEpoch {epoch}/{num_epochs}")
@@ -233,6 +330,12 @@ def train(model=None, root_dir: str = "./dataset", image_size: int = 256, batch_
 
         print(f"Train loss: {train_loss:.4f} | Train acc: {train_acc:.4f}")
         print(f"Val   loss: {val_loss:.4f} | Val   acc: {val_acc:.4f}")
+
+        # Store metrics for plotting
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        train_accs.append(train_acc)
+        val_accs.append(val_acc)
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -257,7 +360,10 @@ def train(model=None, root_dir: str = "./dataset", image_size: int = 256, batch_
 
     print("Confusion matrix (test):")
     print(confusion_matrix(test_labels, test_preds))
-   
+
+    # ================== Plotting ==================
+    plot_training_curves(train_losses, val_losses, train_accs, val_accs, model_name)
+    plot_confusion_matrix(test_labels, test_preds, class_names, model_name)
 
 
 if __name__ == "__main__":
@@ -276,12 +382,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     model_builder = Model(num_classes=2, flag="train")
-    model = build_model(model_builder, model_type=args.model_type)
+    model, model_name = build_model(model_builder, model_type=args.model_type)
     if args.model_type == 4:
         args.image_size = 224  # ViT-Tiny requires 224x224 input
 
     train(
         model=model,
+        model_name=model_name,
         root_dir=args.root_dir,
         image_size=args.image_size,
         batch_size=args.batch_size,
