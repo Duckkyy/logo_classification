@@ -7,10 +7,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import models
-
 from sklearn.metrics import classification_report, confusion_matrix
 
 from dataset import DataModule
+from model import Model
 
 
 def set_seed(seed: int = 42):
@@ -158,7 +158,7 @@ def evaluate(
 
     return epoch_loss, epoch_acc, all_labels, all_preds
 
-def train(root_dir: str = "./dataset", image_size: int = 256, batch_size: int =32, num_workers: int =4, learning_rate_backbone: float =1e-4, learning_rate_head: float =5e-4, weight_decay: float =1e-4, num_epochs: int =20, save_path: str ="best_sampler.pth"):
+def train(model=None, root_dir: str = "./dataset", image_size: int = 256, batch_size: int =32, num_workers: int =4, learning_rate_backbone: float =1e-4, learning_rate_head: float =5e-4, weight_decay: float =1e-4, num_epochs: int =20, save_path: str ="best_sampler.pth"):
     set_seed(42)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -189,9 +189,6 @@ def train(root_dir: str = "./dataset", image_size: int = 256, batch_size: int =3
     num_classes = len(class_names)
     print("Class names:", class_names)
 
-    # ================== Model ==================
-    # model = create_resnet18(num_classes=num_classes)
-    model = create_efficientnet_b0(num_classes=num_classes)
     model = model.to(device)
 
     backbone_params = []
@@ -283,7 +280,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    model_builder = Model(num_classes=2, flag="train")
+    model = model_builder.build_vit_tiny()
+
     train(
+        model=model,
         root_dir=args.root_dir,
         image_size=args.image_size,
         batch_size=args.batch_size,
