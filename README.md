@@ -20,7 +20,8 @@ conda activate logo
 ```bash
 mkdir weights
 ```
-2. Google Drive から学習済みモデルをここからダウンロードして配置する：
+2. Google Drive から学習済みモデルを[ここ](https://drive.google.com/drive/folders/1_o6ZLPLGuaEySYNjg8hAiJZC3uYWhS9s?usp=sharing
+)からダウンロードして配置する：
 
 ## 3. 推論実行方法（Inference）
 画像を入力として良品/不良品の分類を行うには、以下のコマンドを実行します。
