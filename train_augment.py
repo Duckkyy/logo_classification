@@ -56,7 +56,7 @@ def plot_training_curves(train_losses, val_losses, train_accs, val_accs):
     ax2.legend()
     ax2.grid(True)
 
-    plt.suptitle(f'Training Curves - {model_name}')
+    plt.suptitle(f'Training Curves - augmentation_resnet18')
     plt.tight_layout()
     save_dir = "training_curves"
     os.makedirs(save_dir, exist_ok=True)
@@ -99,7 +99,7 @@ def plot_confusion_matrix(labels, preds, class_names):
     save_dir = "confusion_matrices"
     os.makedirs(save_dir, exist_ok=True)
     cm_save_path = os.path.join(save_dir, f"augmentation_resnet18_confusion_matrix.png")
-    plt.title(f'Confusion Matrix - {model_name}')
+    plt.title(f'Confusion Matrix - augmentation_resnet18')
     plt.savefig(cm_save_path)
     plt.close()
     print(f"Confusion matrix saved to {cm_save_path}")
