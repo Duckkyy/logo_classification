@@ -30,7 +30,7 @@ def create_resnet18(num_classes: int = 2) -> nn.Module:
     model.fc = nn.Linear(in_features, num_classes)
     return model
 
-def plot_training_curves(train_losses, val_losses, train_accs, val_accs, model_name: str):
+def plot_training_curves(train_losses, val_losses, train_accs, val_accs):
     """
     Plot and save training/validation loss and accuracy curves.
     """
@@ -66,7 +66,7 @@ def plot_training_curves(train_losses, val_losses, train_accs, val_accs, model_n
     print(f"Training curves saved to {curve_save_path}")
 
 
-def plot_confusion_matrix(labels, preds, class_names, model_name: str):
+def plot_confusion_matrix(labels, preds, class_names):
     """
     Plot and save confusion matrix.
     """
@@ -298,8 +298,8 @@ def train(root_dir: str = "./dataset", image_size: int = 256, batch_size: int =3
     print(confusion_matrix(test_labels, test_preds)) 
 
     # ================== Plotting ==================
-    plot_training_curves(train_losses, val_losses, train_accs, val_accs, model_name)
-    plot_confusion_matrix(test_labels, test_preds, class_names, model_name)
+    plot_training_curves(train_losses, val_losses, train_accs, val_accs)
+    plot_confusion_matrix(test_labels, test_preds, class_names)
     
 
 if __name__ == "__main__":
