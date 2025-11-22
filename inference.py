@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 
 import torch
 import torch.nn as nn
@@ -135,8 +136,13 @@ def main():
     # Load model
     model = load_model(args.model_path, device)
 
+    start_time = time.perf_counter()
+
     # Predict
     pred_idx, pred_label, prob_list = predict_image(model, image_tensor)
+    
+    end_time = time.perf_counter()
+    print(f"Inference time : {end_time - start_time:.4f} seconds")
 
     print("\n===== Inference Result =====")
     print(f"Predicted label : {pred_label}")
