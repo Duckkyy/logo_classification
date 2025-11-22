@@ -1,4 +1,5 @@
 import torch
+import timm
 import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import models
@@ -31,12 +32,13 @@ class Model:
     
     def build_vit_tiny(self):
         if self.flag == "train":
-            weights = ViT_T_16_Weights.IMAGENET1K_V1
+            pretrained = True
         else:
-            weights = None
-        model = vit_t_16(weights=weights)
+            pretrained = False
 
-        # replace head
-        in_features = model.heads.head.in_features
-        model.heads.head = nn.Linear(in_features, self.num_classes)
+        model = timm.create_model(
+            "vit_tiny_patch16_224",
+            pretrained=pretrained,
+            num_classes=self.num_classes,
+        )
         return model
