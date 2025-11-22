@@ -1,75 +1,40 @@
-📘 不良品識別モデル – README
-📌 概要
+# 不良品識別モデル
 
-このリポジトリは，製品画像（good / bad）を入力として
-良品・不良品を自動判定する二値分類モデル を実装したプロジェクトです。
+本プロジェクトは、製品画像（good / bad）を入力として
+良品・不良品を自動分類するための Python ベースのツールです。
+クラス不均衡への対応や複数モデルの比較（ResNet / EfficientNet / MobileNet / ViT）を通じて、
+より高精度な自動外観検査モデルの構築を目的としています。
 
-クラス不均衡への対策
 
-複数モデル（ResNet18 / EfficientNet / MobileNet / ViT）の比較
+## 1. 環境構築（Conda）
 
-推論スクリプト（inference）
+本プロジェクトは Conda 環境で動作します。
 
-可視化とレポート作成用コード
-
-を含んでいます。
-
-学習済みモデルの重みファイル（weights）は容量が大きいため，
-Google Drive で共有しています。
-
-💻 動作環境（例）
-
-以下の環境で動作確認を行いました：
-
-OS：Ubuntu / macOS
-
-Python：3.10
-
-GPU：NVIDIA RTX 系（任意）
-
-ライブラリ：PyTorch, torchvision, timm, scikit-learn など
-
-🛠️ 1. Conda 環境構築
-
-まずは Conda 環境を作成します：
-
+```bash
 conda env create -f environment.yml
-conda activate defect-detection
+conda activate logo
+```
 
-
-environment.yml は本リポジトリに含まれています。
-
-📦 2. 学習済みモデル（weights）のダウンロード
-
-プロジェクト直下に weights/ フォルダを作成：
-
+## 2. 学習済みモデル（weights）の準備
+1. weights/ フォルダを作成する：
+```bash
 mkdir weights
+```
+2. Google Drive から学習済みモデルをここからダウンロードして配置する：
+
+## 3. 推論実行方法（Inference）
+画像を入力として良品/不良品の分類を行うには、以下のコマンドを実行します。
+
+```bash
+python inference.py --model-path weights/best_sampler_resnet.pth path/to/image --device cuda --model-type 1
+```
+他の学習済みモデルを使用したい場合は、--model に指定する重みファイル名 と --model_type の番号を下表のように変更するだけで推論を実行できます。
+| weight file  | model_type |
+| ------------ | ---------- |
+| resnet       | 1          |
+| efficientNet | 2          |
+| mobileNet    | 3          |
+| ViT-Tiny     | 4          |
 
 
-以下の Google Drive リンクからモデルをダウンロードし，
-weights/ フォルダに配置してください：
 
-👉 Google Drive（学習済みモデル）
-（ここにあなたのリンクを貼ってください）
-
-🚀 3. 推論の実行（Inference）
-
-次のコマンドで画像の推論を行えます：
-
-python inference.py --image <path_to_image> --model weights/resnet18.pth
-
-
-例：
-
-python inference.py --image sample.png --model weights/resnet18.pth
-
-
-推論結果（good / bad）がコンソールに表示されます。
-
-📂 ディレクトリ構成（例）
-project/
- ├── weights/             # ← Google Drive からダウンロード
- ├── src/                 # モデル学習/評価コード
- ├── inference.py         # 推論スクリプト
- ├── environment.yml      # conda 環境定義
- └── README.md
