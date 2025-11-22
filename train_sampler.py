@@ -18,23 +18,6 @@ def set_seed(seed: int = 42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-
-def create_resnet18(num_classes: int = 2) -> nn.Module:
-    """
-    Create a ResNet-18 model pretrained on ImageNet and
-    replace the final fully connected layer with a new head.
-    """
-    model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-    in_features = model.fc.in_features
-    model.fc = nn.Linear(in_features, num_classes)
-    return model
-
-def create_efficientnet_b0(num_classes: int = 2):
-    model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
-    in_features = model.classifier[1].in_features
-    model.classifier[1] = nn.Linear(in_features, num_classes)
-    return model
-
 def build_weighted_sampler(
     train_dataset,
     train_class_counts: torch.Tensor,
